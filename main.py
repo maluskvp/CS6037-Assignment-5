@@ -151,7 +151,8 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
         "train_errors": int(train_errors),
         "support_vectors": int(np.sum(a > eps)),
         "equality": float(np.sum(a * y)),
-        "min_alpha": float(np.min(a))
+        "min_alpha": float(np.min(a)),
+        "max_alpha": float(np.max(a))
     })
 
   #return the trained model and history
@@ -179,45 +180,39 @@ def standardize_features(Xtr, Xte):
 
 if __name__ == "__main__":
   # get the datasets
+  # fixing the dataset used:
   # Iris_Setosa_Versicolor train and test
   df = pd.read_csv("SMO_data/iris_setosa_versicolor_train.csv")
   Xtr_ISV = df.drop(columns=["y"]).to_numpy(dtype=float)
   Ytr_ISV = df["y"].to_numpy(dtype=float)
+
   df = pd.read_csv("SMO_data/iris_setosa_versicolor_test.csv")
   Xte_ISV = df.drop(columns=["y"]).to_numpy(dtype=float)
   Yte_ISV = df["y"].to_numpy(dtype=float)
 
   Xtr_ISV_stan, Xte_ISV_stan = standardize_features(Xtr_ISV, Xte_ISV)
-
-  # Rings train and test
-  df = pd.read_csv("SMO_data/rings_train.csv")
-  Xtr_R = df.drop(columns=["y"]).to_numpy(dtype=float)
-  Ytr_R = df["y"].to_numpy(dtype=float)
-  df = pd.read_csv("SMO_data/rings_test.csv")
-  Xte_R = df.drop(columns=["y"]).to_numpy(dtype=float)
-  Yte_R = df["y"].to_numpy(dtype=float)
-
-  Xtr_R_stan, Xte_R_stan = standardize_features(Xtr_R, Xte_R)
-
   # XOR train and test
-  df = pd.read_csv("SMO_data/iris_setosa_versicolor_train.csv")
+  df = pd.read_csv("SMO_data/xor_train.csv")
   Xtr_XOR = df.drop(columns=["y"]).to_numpy(dtype=float)
   Ytr_XOR = df["y"].to_numpy(dtype=float)
-  df = pd.read_csv("SMO_data/iris_setosa_versicolor_test.csv")
+
+  df = pd.read_csv("SMO_data/xor_test.csv")
   Xte_XOR = df.drop(columns=["y"]).to_numpy(dtype=float)
   Yte_XOR = df["y"].to_numpy(dtype=float)
 
   Xtr_XOR_stan, Xte_XOR_stan = standardize_features(Xtr_XOR, Xte_XOR)
 
-  # Iris_Versicolor_Virginica train
-
-  df = pd.read_csv("SMO_data/iris_setosa_versicolor_train.csv")
+  # iris versicolor vs virginica
+  df = pd.read_csv("SMO_data/iris_versicolor_virginica.csv")
   X_tr_IVV = df.drop(columns=["y"]).to_numpy(dtype=float)
-  Y_tr_XOR = df["y"].to_numpy(dtype=float)
+  Y_tr_IVV = df["y"].to_numpy(dtype=float)
 
+  # standardize the dataset
+  IVV_mean = np.mean(X_tr_IVV, axis=0)
+  IVV_std = np.std(X_tr_IVV, axis=0)
+  IVV_std[IVV_std == 0] = 1
 
-  # iris_setosa_versicolor train
-  #SMO(Xtr_ISV_stan,Ytr_ISV,kernel1,T=2)
+  X_tr_IVV_stan = (X_tr_IVV - IVV_mean) / IVV_std
 
   a, b, history = SMO(
     Xtr_ISV_stan,
@@ -331,3 +326,44 @@ for name, kernel_func in [("K1", kernel1), ("K2", kernel2)]:
     print("maximum equality error:", max_equality)
     print("alpha nonnegative:", min_alpha >= -1e-8)
     print("equality satisfied:", max_equality < 1e-8)
+
+
+# part d to test nonseparable datasets
+print("\n--- part d: hard-margin failure ---")
+
+cases = [
+    ("XOR K1", Xtr_XOR_stan, Ytr_XOR, kernel1),
+    ("Iris IVV K1", X_tr_IVV_stan, Y_tr_IVV, kernel1),
+    ("Iris IVV K2", X_tr_IVV_stan, Y_tr_IVV, kernel2)
+]
+
+for name, X, y, kernel_func in cases:
+    print(f"\n{name}")
+
+    alpha, bias, history = SMO(
+        X, y, kernel_func, T=1000, seed=42
+    )
+
+    if not history:
+        print("no iterations recorded")
+        continue
+
+    iterations = [h["iteration"] for h in history]
+    max_alpha = [h["max_alpha"] for h in history]
+    objectives = [h["objective"] for h in history]
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+
+    axes[0].plot(iterations, max_alpha)
+    axes[0].set_title(f"{name}: max alpha")
+    axes[0].set_xlabel("iteration")
+    axes[0].set_ylabel("max alpha")
+
+    axes[1].plot(iterations, objectives)
+    axes[1].set_title(f"{name}: dual objective")
+    axes[1].set_xlabel("iteration")
+    axes[1].set_ylabel("W(alpha)")
+
+    plt.tight_layout()
+    plt.savefig(f"part_d_{name.replace(' ', '_')}.png")
+    plt.show()
