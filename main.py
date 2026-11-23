@@ -259,6 +259,32 @@ predictions2 = np.sign(
 
 print("training accuracy:", np.mean(predictions2 == Ytr_ISV))
 
+
+# part a for toy dataset sanity test
+print("\n--- part a: toy dataset test ---")
+
+# two points that are easy to separate
+X_toy = np.array([[-1.0, 0.0], [1.0, 0.0]])
+y_toy = np.array([-1.0, 1.0])
+
+alpha, bias, history = SMO(
+    X_toy, y_toy, kernel1, T=1000, seed=42
+)
+
+w = (alpha * y_toy) @ X_toy
+scores = X_toy @ w + bias
+
+print("alpha:", alpha)
+print("w:", w)
+print("bias:", bias)
+print("margin values:", y_toy * scores)
+
+print("alpha correct:", np.allclose(alpha, [0.5, 0.5], atol=1e-3))
+print("w correct:", np.allclose(w, [1.0, 0.0], atol=1e-3))
+print("bias correct:", np.isclose(bias, 0.0, atol=1e-3))
+print("margin constraints:", np.all(y_toy * scores >= 1 - 1e-3))
+print("equality constraint:", np.isclose(np.sum(alpha * y_toy), 0.0, atol=1e-8))
+
 # part c1 which is compare 10 random initializations
 print("\n--- part c1: random initializations ---")
 
