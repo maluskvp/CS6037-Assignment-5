@@ -150,13 +150,15 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
         "objective": objective,
         "train_errors": int(train_errors),
         "support_vectors": int(np.sum(a > eps)),
-        "equality": float(np.sum(a * y))
+        "equality": float(np.sum(a * y)),
+        "min_alpha": float(np.min(a))
     })
 
   #return the trained model and history
   print("iterations:", len(iteration_history))
   print("support vectors:", np.sum(a > eps))
   print("sum(y * alpha):", np.sum(a * y))
+  print("min(alpha):", np.min(a))
 
   return a, b, iteration_history
 
@@ -227,3 +229,105 @@ if __name__ == "__main__":
 
 print("bias:", b)
 print("final objective:", history[-1]["objective"] if history else "no updates")
+
+# check part a results
+print("all alpha >= 0:", np.all(a >= -1e-8))
+
+predictions = np.sign(
+    kernel1(Xtr_ISV_stan, Xtr_ISV_stan) @ (a * Ytr_ISV) + b
+)
+
+print("training accuracy:", np.mean(predictions == Ytr_ISV))
+
+objectives = [h["objective"] for h in history]
+print("objective non-decreasing:",
+      np.all(np.diff(objectives) >= -1e-6))
+
+# test part a with polynomial kernel
+a2, b2, history2 = SMO(
+    Xtr_ISV_stan,
+    Ytr_ISV,
+    kernel2,
+    T=10000,
+    seed=42
+)
+
+print("\n--- kernel 2 results ---")
+print("bias:", b2)
+print("iterations:", len(history2))
+print("support vectors:", np.sum(a2 > 1e-8))
+print("alpha nonnegative:", np.all(a2 >= -1e-8))
+
+predictions2 = np.sign(
+    kernel2(Xtr_ISV_stan, Xtr_ISV_stan) @ (a2 * Ytr_ISV) + b2
+)
+
+print("training accuracy:", np.mean(predictions2 == Ytr_ISV))
+
+# part c1 which is compare 10 random initializations
+print("\n--- part c1: random initializations ---")
+
+for seed in range(10):
+    alpha, bias, history = SMO(
+        Xtr_ISV_stan,
+        Ytr_ISV,
+        kernel1,
+        T=10000,
+        seed=seed
+    )
+
+    w = (alpha * Ytr_ISV) @ Xtr_ISV_stan
+
+    print(
+        f"seed {seed}: "
+        f"w={np.round(w, 4)}, "
+        f"b={bias:.4f}, "
+        f"sv={np.sum(alpha > 1e-8)}"
+    )
+
+
+# part c2 to compare our smo with sklearn svc
+print("\n--- part c2: sklearn comparison ---")
+
+for name, kernel_func, svc_model in [
+    ("K1", kernel1, SVC(kernel="linear", C=1e8)),
+    ("K2", kernel2, SVC(kernel="poly", degree=2, gamma=1, coef0=1, C=1e8))
+]:
+    alpha, bias, history = SMO(
+        Xtr_ISV_stan, Ytr_ISV, kernel_func, T=10000, seed=42
+    )
+
+    svc_model.fit(Xtr_ISV_stan, Ytr_ISV)
+
+    # sklearn stores signed dual coefficients
+    sklearn_alpha = np.zeros(len(Ytr_ISV))
+    sklearn_alpha[svc_model.support_] = (
+        np.abs(svc_model.dual_coef_[0])
+    )
+
+    K = kernel_func(Xtr_ISV_stan, Xtr_ISV_stan)
+
+    print(f"\n{name}:")
+    print("our bias is :", bias)
+    print("sklearn bias is :", svc_model.intercept_[0])
+    print("our support vectors are:", np.where(alpha > 1e-8)[0])
+    print("sklearn support vectors are:", svc_model.support_)
+    print("our objective is:", hard_margin(K, alpha, Ytr_ISV))
+    print("sklearn objective is:", hard_margin(K, sklearn_alpha, Ytr_ISV))
+
+# part c3 this to verify constraints during training
+print("\n--- part c3: constraint verification ---")
+
+for name, kernel_func in [("K1", kernel1), ("K2", kernel2)]:
+    alpha, bias, history = SMO(
+        Xtr_ISV_stan, Ytr_ISV, kernel_func, T=10000, seed=42
+    )
+
+    min_alpha = min(h["min_alpha"] for h in history)
+    max_equality = max(abs(h["equality"]) for h in history)
+
+    print(f"{name}:")
+    print("minimum alpha:", min_alpha)
+    print("maximum equality error:", max_equality)
+    print("alpha nonnegative:", min_alpha >= -1e-8)
+    print("equality satisfied:", max_equality < 1e-8)
