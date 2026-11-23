@@ -59,9 +59,11 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
     # KKT violators
     vi = np.zeros_like(a)
 
-    vi[a>0] = yifxi - 1
-    vi[a<0] = np.maximum(0, 1 - yifxi[a<0])
-
+    #vi[a>0] = yifxi - 1
+    #vi[a<0] = np.maximum(0, 1 - yifxi[a<0])
+    vi[a > 0] = np.abs(yifxi[a > 0] - 1)
+    vi[a == 0] = np.maximum(0, 1 - yifxi[a == 0])
+    
     i1 = np.argmax(vi) # 4a get the worst KKT violator index
 
     if vi[i1] < tau: # use the index to check if Step 3 succeeds
@@ -70,35 +72,93 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
 
     ei = Ei[i1] - Ei # get e(i) part 4b
 
-    k = K[i1,i1] + np.diag(K) - 2 * K[i1:] #K[i1,i1] + diagnols of K to get K_ii - 2 * K[i1,i]
-
-    valid_k_values = []
-    for index, k_i in enumerate(k):
-      if k_i > 0:
-        valid_k_values.append(k_i) # get all k values > 0 for 4c
+    k = K[i1,i1] + np.diag(K) - 2 * K[i1, :] #K[i1,i1] + diagnols of K to get K_ii - 2 * K[i1,i]
+    
+    #valid_k_values = []
+    valid_k_values = np.where(k > 1e-12)[0]
+    valid_k_values = valid_k_values[valid_k_values != i1]
 
     if len(valid_k_values) == 0:
-      print("No valid i for which k = K[i1,i1] + diagnols of K to get K_ii - 2 * K[i1,i]")
-      break
+          print("No valid i for which k = K[i1,i1] + diagnols of K to get K_ii - 2 * K[i1,i]")
+          break
 
-    sorted_k = valid_k_values[np.argsort(np.abs(Ei[valid_k_values]))[::-1]] # sort numpy array of k indexes based on highest to lowest Ei[k] value
+    sorted_k = valid_k_values[np.argsort(np.abs(Ei[i1] - Ei[valid_k_values]))[::-1]] # sort numpy array of k indexes based on highest to lowest Ei[k] value
 
     for index, i2 in enumerate(sorted_k):
-      e = Ei[i2] # get e for current i2 value
-      k = K[i1,i1] + K[i2,i2] - 2 * K[i1,i2] # update k to be 4d
-      a_i2_unc = a[index] + (y[i2] * e / k)
-
+      #e = Ei[i2] # get e for current i2 value
+      e = Ei[i1] - Ei[i2]
+      k = K[i1, i1] + K[i2, i2] - 2 * K[i1, i2] # update k to be 4d
       a_i1_old = a[i1]
       a_i2_old = a[i2]
-      l = np.max(0, a_i2_old - a_i1_old)
-      h = np.inf
-      if i1 == i2:
-        l = 0
-        h = a_i2_old + a_i1_old
-      a_i2_new = np.min(np.max(a_i2_unc,l), h)
+      a_i2_unc = a_i2_old + y[i2] * e / k
+      if y[i1] != y[i2]:
+          l = max(0, a_i2_old - a_i1_old)
+          h = np.inf
+      else:
+          l = 0
+          h = a_i2_old + a_i1_old
 
+      a_i2_new = np.clip(a_i2_unc, l, h)
+      # then to update alpha1 while keeping the equality constraint
+      a_i1_new = a_i1_old + y[i1] * y[i2] * (a_i2_old - a_i2_new)
+    
+      if abs(a_i2_new - a_i2_old) < eps: # skip updates that are too small
+          continue
 
-  return
+      if a_i1_new < -eps:
+          continue
+      b_old = b # update the bias using the two changed points
+
+      b1 = (
+          b_old - Ei[i1]
+          - y[i1] * (a_i1_new - a_i1_old) * K[i1, i1]
+          - y[i2] * (a_i2_new - a_i2_old) * K[i1, i2]
+      )
+
+      b2 = (
+          b_old - Ei[i2]
+          - y[i1] * (a_i1_new - a_i1_old) * K[i1, i2]
+          - y[i2] * (a_i2_new - a_i2_old) * K[i2, i2]
+      )
+
+      # to save the updated alpha values
+      a[i1] = a_i1_new
+      a[i2] = a_i2_new
+
+      # setting tiny alpha values to zero
+      a[a < eps] = 0
+
+      # choose the bias from the updated support vectors
+      if a[i1] > eps:
+          b = b1
+      elif a[i2] > eps:
+          b = b2
+      else:
+          b = (b1 + b2) / 2
+
+      break
+
+    # record the objective and training progress
+    fxi = K @ (a * y) + b
+    predictions = np.where(fxi >= 0, 1, -1)
+
+    objective = hard_margin(K, a, y)
+    train_errors = np.sum(predictions != y)
+
+    iteration_history.append({
+        "iteration": i + 1,
+        "objective": objective,
+        "train_errors": int(train_errors),
+        "support_vectors": int(np.sum(a > eps)),
+        "equality": float(np.sum(a * y))
+    })
+
+  #return the trained model and history
+  print("iterations:", len(iteration_history))
+  print("support vectors:", np.sum(a > eps))
+  print("sum(y * alpha):", np.sum(a * y))
+
+  return a, b, iteration_history
 
 
 
@@ -155,6 +215,15 @@ if __name__ == "__main__":
 
 
   # iris_setosa_versicolor train
-  SMO(Xtr_ISV_stan,Ytr_ISV,kernel1,T=2)
+  #SMO(Xtr_ISV_stan,Ytr_ISV,kernel1,T=2)
 
-  
+  a, b, history = SMO(
+    Xtr_ISV_stan,
+    Ytr_ISV,
+    kernel1,
+    T=10000,
+    seed=42
+)
+
+print("bias:", b)
+print("final objective:", history[-1]["objective"] if history else "no updates")
