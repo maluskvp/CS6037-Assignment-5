@@ -164,6 +164,81 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
   return a, b, iteration_history
 
 
+def getGridAndDecisionFunction(Xtr, Ytr, kernel, alpha, bias):
+
+  # get the max and min for the x value (1st column in each csv)
+  xmin = Xtr[:,0].min() - 1 # - 1 for the margin
+  xmax = Xtr[:,0].max() + 1 # + 1 for the margin
+
+  # get the max and min for the y value (2nd column in each csv)
+  ymin = Xtr[:,1].min() - 1 # - 1 for the margin
+  ymax = Xtr[:,1].max() + 1 # + 1 for the margin
+
+  # create grid from margins
+  xrange = np.linspace(xmin, xmax, 300) # create 300 points between xmin and xmax
+  yrange = np.linspace(ymin, ymax, 300) # create 300 points between ymin and ymax
+
+  xx, yy = np.meshgrid(xrange, yrange) # this will be used for the contour
+
+  grid = np.c_[xx.ravel(), yy.ravel()] # flatten the 2D into x,y values so we can use this for our decision function
+
+  # get the decision matrix over the grid
+  decision_function = []
+  for g in grid: 
+    fx = 0
+    for index, x in enumerate(Xtr):
+      fx += alpha[index] * Ytr[index] * kernel(x,g) # iterate through all Xtr values and append to the fx 
+    fx += bias # add the bias after taking the sum of all the product values based on index and x for decision function
+    decision_function.append(fx) # add decision function values to match the grid size
+
+  return xx, yy, np.array(decision_function)
+
+def getConfusionMatrix(Xtr,Ytr,Xte,Yte, kernel, alpha, bias):
+
+  # get decision function over Xtr
+  Xtr_fx = []
+  for i in Xtr: 
+    fx = 0
+    for index, x in enumerate(Xtr):
+      fx += alpha[index] * Ytr[index] * kernel(x,i) # iterate through all Xtr values and append to the fx 
+    fx += bias # add the bias after taking the sum of all the product values based on index and x for decision function
+    Xtr_fx.append(fx) # add decision function values to match the grid size
+
+  Ytr_predictions = []
+  for x in Xtr_fx:
+    if x >= 0:
+      Ytr_predictions.append(1) # predict 1 if decision function at x is >= 0 based on decision boundary in b1
+    else:
+      Ytr_predictions.append(-1) # predict -1 otherwise
+
+  # Repeat for Xte
+  Xte_fx = []
+  for i in Xte: 
+    fx = 0
+    for index, x in enumerate(Xte):
+      fx += alpha[index] * Yte[index] * kernel(x,i) # iterate through all Xtr values and append to the fx 
+    fx += bias # add the bias after taking the sum of all the product values based on index and x for decision function
+    Xte_fx.append(fx) # add decision function values to match the grid size
+
+  Yte_predictions = []
+  for x in Xte_fx:
+    if x >= 0:
+      Yte_predictions.append(1) # predict 1 if decision function at x is >= 0 based on decision boundary in b1
+    else:
+      Yte_predictions.append(-1) # predict -1 otherwise
+
+  Xtr_confusion = confusion_matrix(Ytr, Ytr_predictions, labels=[-1,1])
+  Xte_confusion = confusion_matrix(Yte, Yte_predictions, labels=[-1,1])
+
+  print("\nTrain Confusion Matrix")
+  print(Xtr_confusion)
+
+  print("\nTest Confusion Matrix")
+  print(Xte_confusion)
+
+  print("\nTraining Accuracy = ", accuracy_score(Ytr,Ytr_predictions))
+  print("\nTest Accuracy = ", accuracy_score(Yte, Yte_predictions))
+
 
 def standardize_features(Xtr, Xte):
   mean = np.mean(Xtr, axis=0)
@@ -284,6 +359,65 @@ print("w correct:", np.allclose(w, [1.0, 0.0], atol=1e-3))
 print("bias correct:", np.isclose(bias, 0.0, atol=1e-3))
 print("margin constraints:", np.all(y_toy * scores >= 1 - 1e-3))
 print("equality constraint:", np.isclose(np.sum(alpha * y_toy), 0.0, atol=1e-8))
+
+
+# part b1 
+
+print("\n--- part b: experiments ---")
+
+print("Dataset = iris_setosa_versicolor_train Kernel = K1")
+alpha, bias, history = SMO(Xtr_ISV,Ytr_ISV,kernel1)
+eps = 1e-8
+
+# get the grid desicion function values from SMO
+xx, yy, fx = getGridAndDecisionFunction(Xtr_ISV, Ytr_ISV, kernel1, alpha, bias)
+
+fx = np.array(fx)
+fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
+
+plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
+
+plt.scatter(Xtr_ISV[Ytr_ISV==1, 0],Xtr_ISV[Ytr_ISV==1,1], label="Setosa", marker="o") # scatter plot the Setosa values
+plt.scatter(Xtr_ISV[Ytr_ISV==-1, 0],Xtr_ISV[Ytr_ISV==-1,1], label="Versicolor", marker="o") # scatter plot the Versicolor values
+plt.scatter(Xtr_ISV[alpha > eps, 0],Xtr_ISV[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+    edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
+
+plt.title("Iris Setosa Versicolor Kernel 1")
+plt.xlabel("Sepal Length")
+plt.ylabel("Petal Length")
+plt.legend()
+plt.grid(True)
+plt.show()
+plt.savefig("part_b_ISV_K1.png")
+
+getConfusionMatrix(Xtr_ISV, Ytr_ISV,Xte_ISV,Yte_ISV,kernel1,alpha,bias)
+
+print("\nDataset = iris_setosa_versicolor_train Kernel = K2")
+alpha, bias, history = SMO(Xtr_ISV,Ytr_ISV,kernel2)
+eps = 1e-8
+
+# get the grid desicion function values from SMO
+xx, yy, fx = getGridAndDecisionFunction(Xtr_ISV, Ytr_ISV, kernel2, alpha, bias)
+
+fx = np.array(fx)
+fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
+
+plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
+
+plt.scatter(Xtr_ISV[Ytr_ISV==1, 0],Xtr_ISV[Ytr_ISV==1,1], label="Setosa", marker="o") # scatter plot the Setosa values
+plt.scatter(Xtr_ISV[Ytr_ISV==-1, 0],Xtr_ISV[Ytr_ISV==-1,1], label="Versicolor", marker="o") # scatter plot the Versicolor values
+plt.scatter(Xtr_ISV[alpha > eps, 0],Xtr_ISV[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+    edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
+
+plt.title("Iris Setosa Versicolor Kernel 2")
+plt.xlabel("Sepal Length")
+plt.ylabel("Petal Length")
+plt.legend()
+plt.grid(True)
+plt.show()
+plt.savefig("part_b_ISV_K2.png")
+getConfusionMatrix(Xtr_ISV, Ytr_ISV,Xte_ISV,Yte_ISV,kernel2,alpha,bias)
+
 
 # part c1 which is compare 10 random initializations
 print("\n--- part c1: random initializations ---")
