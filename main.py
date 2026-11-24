@@ -45,7 +45,6 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
   iteration_history = []
 
 
-
   for i in range(int(T)):
     fxi = K @ (a * y) + b
 
@@ -67,14 +66,13 @@ def SMO(X, y, kernel, eps=1e-8, tau=1e-3, T=10e4, seed=42):
     i1 = np.argmax(vi) # 4a get the worst KKT violator index
 
     if vi[i1] < tau: # use the index to check if Step 3 succeeds
-      print(f"Reached KKT tolerance with vi[i1] = {vi[i1]}")
+      print(f"Converged - reached KKT tolerance with vi[i1] = {vi[i1]}")
       break
 
     ei = Ei[i1] - Ei # get e(i) part 4b
 
     k = K[i1,i1] + np.diag(K) - 2 * K[i1, :] #K[i1,i1] + diagnols of K to get K_ii - 2 * K[i1,i]
     
-    #valid_k_values = []
     valid_k_values = np.where(k > 1e-12)[0]
     valid_k_values = valid_k_values[valid_k_values != i1]
 
@@ -193,7 +191,7 @@ def getGridAndDecisionFunction(Xtr, Ytr, kernel, alpha, bias):
 
   return xx, yy, np.array(decision_function)
 
-def getConfusionMatrix(Xtr,Ytr,Xte,Yte, kernel, alpha, bias):
+def getConfusionMatrixAndMargin(Xtr,Ytr,Xte,Yte, kernel, alpha, bias):
 
   # get decision function over Xtr
   Xtr_fx = []
@@ -215,8 +213,8 @@ def getConfusionMatrix(Xtr,Ytr,Xte,Yte, kernel, alpha, bias):
   Xte_fx = []
   for i in Xte: 
     fx = 0
-    for index, x in enumerate(Xte):
-      fx += alpha[index] * Yte[index] * kernel(x,i) # iterate through all Xtr values and append to the fx 
+    for index, x in enumerate(Xtr):
+      fx += alpha[index] * Ytr[index] * kernel(x,i) # iterate through all Xte values and append to the fx 
     fx += bias # add the bias after taking the sum of all the product values based on index and x for decision function
     Xte_fx.append(fx) # add decision function values to match the grid size
 
@@ -237,8 +235,46 @@ def getConfusionMatrix(Xtr,Ytr,Xte,Yte, kernel, alpha, bias):
   print(Xte_confusion)
 
   print("\nTraining Accuracy = ", accuracy_score(Ytr,Ytr_predictions))
-  print("\nTest Accuracy = ", accuracy_score(Yte, Yte_predictions))
+  print("Test Accuracy = ", accuracy_score(Yte, Yte_predictions))
 
+  # first get ||w||^2
+
+  w2 = 0.0
+  
+  for i, xi in enumerate(Xtr):
+     for j, xj in enumerate(Xtr):
+        w2 += alpha[i] * alpha[j] * Ytr[i] * Ytr[j] * kernel(xi,xj)
+
+  w = np.sqrt(w2)
+
+  margin = 2/w
+  sum_a = np.sum(alpha)
+
+  print(f"Margin 2/||w|| = {margin}")
+  print(f"||w||^2 = {w2}")
+  print(f"sum of alpha = {sum_a}")
+  print(f"w2 agrees with alpha sum? {np.isclose(w2,sum_a, atol=1e-3)}") # use isclose with the tolerance being tau to check agreement
+        
+
+def plotWaAndMisclass(history, pltTitle, supTitle):
+  #plot history W(alpha) and misclassifications
+  iterations = [h["iteration"] for h in history]
+  Walpha = [h["objective"] for h in history]
+  misclassifications = [h["train_errors"] for h in history]
+
+  fig, (ax1, ax2) = plt.subplots(1,2)
+  ax1.plot(iterations,Walpha, label="W(alpha)")
+  ax1.set_xlabel("# of Iterations")
+  ax1.set_ylabel("Objective W(alpha)")
+  ax1.set_title("W(alpha) vs Iterations")
+
+  ax2.plot(iterations,misclassifications, label="Misclassification")
+  ax2.set_xlabel("# of Iterations")
+  ax2.set_ylabel("Misclassifications")
+  ax2.set_title("Misclassifications vs Iterations")
+  fig.suptitle(supTitle)
+  plt.savefig(pltTitle)
+  plt.show()
 
 def standardize_features(Xtr, Xte):
   mean = np.mean(Xtr, axis=0)
@@ -276,6 +312,16 @@ if __name__ == "__main__":
   Yte_XOR = df["y"].to_numpy(dtype=float)
 
   Xtr_XOR_stan, Xte_XOR_stan = standardize_features(Xtr_XOR, Xte_XOR)
+
+  df = pd.read_csv("SMO_data/rings_train.csv")
+  Xtr_R = df.drop(columns=["y"]).to_numpy(dtype=float)
+  Ytr_R = df["y"].to_numpy(dtype=float)
+
+  df = pd.read_csv("SMO_data/rings_test.csv")
+  Xte_R = df.drop(columns=["y"]).to_numpy(dtype=float)
+  Yte_R = df["y"].to_numpy(dtype=float)
+
+  Xtr_R_stan, Xte_R_stan = standardize_features(Xtr_R, Xte_R)
 
   # iris versicolor vs virginica
   df = pd.read_csv("SMO_data/iris_versicolor_virginica.csv")
@@ -366,20 +412,21 @@ print("equality constraint:", np.isclose(np.sum(alpha * y_toy), 0.0, atol=1e-8))
 print("\n--- part b: experiments ---")
 
 print("Dataset = iris_setosa_versicolor_train Kernel = K1")
-alpha, bias, history = SMO(Xtr_ISV,Ytr_ISV,kernel1)
+alpha, bias, history = SMO(Xtr_ISV_stan,Ytr_ISV,kernel1)
+print(f"bias = {bias}")
 eps = 1e-8
 
 # get the grid desicion function values from SMO
-xx, yy, fx = getGridAndDecisionFunction(Xtr_ISV, Ytr_ISV, kernel1, alpha, bias)
+xx, yy, fx = getGridAndDecisionFunction(Xtr_ISV_stan, Ytr_ISV, kernel1, alpha, bias)
 
 fx = np.array(fx)
 fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
 
 plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
 
-plt.scatter(Xtr_ISV[Ytr_ISV==1, 0],Xtr_ISV[Ytr_ISV==1,1], label="Setosa", marker="o") # scatter plot the Setosa values
-plt.scatter(Xtr_ISV[Ytr_ISV==-1, 0],Xtr_ISV[Ytr_ISV==-1,1], label="Versicolor", marker="o") # scatter plot the Versicolor values
-plt.scatter(Xtr_ISV[alpha > eps, 0],Xtr_ISV[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+plt.scatter(Xtr_ISV_stan[Ytr_ISV==1, 0],Xtr_ISV_stan[Ytr_ISV==1,1], label="Setosa", marker="o") # scatter plot the Setosa values
+plt.scatter(Xtr_ISV_stan[Ytr_ISV==-1, 0],Xtr_ISV_stan[Ytr_ISV==-1,1], label="Versicolor", marker="o") # scatter plot the Versicolor values
+plt.scatter(Xtr_ISV_stan[alpha > eps, 0],Xtr_ISV_stan[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
     edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
 
 plt.title("Iris Setosa Versicolor Kernel 1")
@@ -387,26 +434,30 @@ plt.xlabel("Sepal Length")
 plt.ylabel("Petal Length")
 plt.legend()
 plt.grid(True)
-plt.show()
 plt.savefig("part_b_ISV_K1.png")
+plt.show()
 
-getConfusionMatrix(Xtr_ISV, Ytr_ISV,Xte_ISV,Yte_ISV,kernel1,alpha,bias)
+
+getConfusionMatrixAndMargin(Xtr_ISV_stan, Ytr_ISV,Xte_ISV_stan,Yte_ISV,kernel1,alpha,bias)
+
+plotWaAndMisclass(history, "part_b_ISV_K1_Wa_Misclass.png", "Iris Setosa Versicolor Dataset Kernel 1")
 
 print("\nDataset = iris_setosa_versicolor_train Kernel = K2")
-alpha, bias, history = SMO(Xtr_ISV,Ytr_ISV,kernel2)
+alpha, bias, history = SMO(Xtr_ISV_stan,Ytr_ISV,kernel2)
+print(f"bias = {bias}")
 eps = 1e-8
 
 # get the grid desicion function values from SMO
-xx, yy, fx = getGridAndDecisionFunction(Xtr_ISV, Ytr_ISV, kernel2, alpha, bias)
+xx, yy, fx = getGridAndDecisionFunction(Xtr_ISV_stan, Ytr_ISV, kernel2, alpha, bias)
 
 fx = np.array(fx)
 fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
 
 plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
 
-plt.scatter(Xtr_ISV[Ytr_ISV==1, 0],Xtr_ISV[Ytr_ISV==1,1], label="Setosa", marker="o") # scatter plot the Setosa values
-plt.scatter(Xtr_ISV[Ytr_ISV==-1, 0],Xtr_ISV[Ytr_ISV==-1,1], label="Versicolor", marker="o") # scatter plot the Versicolor values
-plt.scatter(Xtr_ISV[alpha > eps, 0],Xtr_ISV[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+plt.scatter(Xtr_ISV_stan[Ytr_ISV==1, 0],Xtr_ISV_stan[Ytr_ISV==1,1], label="Setosa", marker="o") # scatter plot the Setosa values
+plt.scatter(Xtr_ISV_stan[Ytr_ISV==-1, 0],Xtr_ISV_stan[Ytr_ISV==-1,1], label="Versicolor", marker="o") # scatter plot the Versicolor values
+plt.scatter(Xtr_ISV_stan[alpha > eps, 0],Xtr_ISV_stan[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
     edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
 
 plt.title("Iris Setosa Versicolor Kernel 2")
@@ -414,14 +465,140 @@ plt.xlabel("Sepal Length")
 plt.ylabel("Petal Length")
 plt.legend()
 plt.grid(True)
-plt.show()
 plt.savefig("part_b_ISV_K2.png")
-getConfusionMatrix(Xtr_ISV, Ytr_ISV,Xte_ISV,Yte_ISV,kernel2,alpha,bias)
+plt.show()
+
+getConfusionMatrixAndMargin(Xtr_ISV_stan, Ytr_ISV,Xte_ISV_stan,Yte_ISV,kernel2,alpha,bias)
+
+plotWaAndMisclass(history, "part_b_ISV_K2_Wa_Misclass.png", "Iris Setosa Versicolor Dataset Kernel 2")
+
+
+print("\nDataset = rings Kernel = K1")
+alpha, bias, history = SMO(Xtr_R_stan,Ytr_R,kernel1)
+print(f"bias = {bias}")
+eps = 1e-8
+
+# get the grid desicion function values from SMO
+xx, yy, fx = getGridAndDecisionFunction(Xtr_R_stan, Ytr_R, kernel1, alpha, bias)
+
+fx = np.array(fx)
+fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
+
+plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
+
+plt.scatter(Xtr_R_stan[Ytr_R==1, 0],Xtr_R_stan[Ytr_R==1,1], label="x1", marker="o") # scatter plot the x1 values
+plt.scatter(Xtr_R_stan[Ytr_R==-1, 0],Xtr_R_stan[Ytr_R==-1,1], label="x2", marker="o") # scatter plot the x2 values
+plt.scatter(Xtr_R_stan[alpha > eps, 0],Xtr_R_stan[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+    edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
+
+plt.title("Rings Kernel 1")
+plt.xlabel("X1")
+plt.ylabel("X2")
+plt.legend()
+plt.grid(True)
+plt.savefig("part_b_R_K1.png")
+plt.show()
+
+getConfusionMatrixAndMargin(Xtr_R_stan, Ytr_R,Xte_R_stan,Yte_R,kernel1,alpha,bias)
+plotWaAndMisclass(history, "part_b_R_K1_Wa_Misclass.png", "Rings Dataset Kernel 1")
+
+print("\nDataset = rings Kernel = K2")
+
+alpha, bias, history = SMO(Xtr_R_stan,Ytr_R,kernel2)
+print(f"bias = {bias}")
+eps = 1e-8
+
+# get the grid desicion function values from SMO
+xx, yy, fx = getGridAndDecisionFunction(Xtr_R_stan, Ytr_R, kernel2, alpha, bias)
+
+fx = np.array(fx)
+fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
+
+plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
+
+plt.scatter(Xtr_R_stan[Ytr_R==1, 0],Xtr_R_stan[Ytr_R==1,1], label="x1", marker="o") # scatter plot the x1 values
+plt.scatter(Xtr_R_stan[Ytr_R==-1, 0],Xtr_R_stan[Ytr_R==-1,1], label="x2", marker="o") # scatter plot the x2 values
+plt.scatter(Xtr_R_stan[alpha > eps, 0],Xtr_R_stan[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+    edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
+
+plt.title("Rings Kernel 2")
+plt.xlabel("X1")
+plt.ylabel("X2")
+plt.legend()
+plt.grid(True)
+plt.savefig("part_b_R_K2.png")
+plt.show()
+
+getConfusionMatrixAndMargin(Xtr_R_stan, Ytr_R,Xte_R_stan,Yte_R,kernel2,alpha,bias)
+plotWaAndMisclass(history, "part_b_R_K2_Wa_Misclass.png", "Rings Dataset Kernel 2")
+
+
+print("\nXOR Kernel = K1")
+
+alpha, bias, history = SMO(Xtr_XOR_stan,Ytr_XOR,kernel1)
+print(f"bias = {bias}")
+eps = 1e-8
+
+# get the grid desicion function values from SMO
+xx, yy, fx = getGridAndDecisionFunction(Xtr_XOR_stan, Ytr_XOR, kernel1, alpha, bias)
+
+fx = np.array(fx)
+fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
+
+plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
+
+plt.scatter(Xtr_XOR_stan[Ytr_XOR==1, 0],Xtr_XOR_stan[Ytr_XOR==1,1], label="x1", marker="o") # scatter plot the x1 values
+plt.scatter(Xtr_XOR_stan[Ytr_XOR==-1, 0],Xtr_XOR_stan[Ytr_XOR==-1,1], label="x2", marker="o") # scatter plot the x2 values
+plt.scatter(Xtr_XOR_stan[alpha > eps, 0],Xtr_XOR_stan[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+    edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
+
+plt.title("XOR Kernel 1")
+plt.xlabel("X1")
+plt.ylabel("X2")
+plt.legend()
+plt.grid(True)
+plt.savefig("part_b_XOR_K1.png")
+plt.show()
+
+getConfusionMatrixAndMargin(Xtr_XOR_stan, Ytr_XOR,Xte_XOR_stan,Yte_XOR,kernel1,alpha,bias)
+plotWaAndMisclass(history, "part_b_XOR_K1_Wa_Misclass.png", "XOR Dataset Kernel 1")
+
+print("\nXOR Kernel = K2")
+
+alpha, bias, history = SMO(Xtr_XOR_stan,Ytr_XOR,kernel2)
+print(f"bias = {bias}")
+eps = 1e-8
+
+# get the grid desicion function values from SMO
+xx, yy, fx = getGridAndDecisionFunction(Xtr_XOR_stan, Ytr_XOR, kernel2, alpha, bias)
+
+fx = np.array(fx)
+fx = fx.reshape(xx.shape) # make decision function 2D like xx and yy
+
+plt.contour(xx,yy,fx,levels=[-1,0,1], linestyles=['--','-','--'], colors="black") # boundary fx=0 and +- 1
+
+plt.scatter(Xtr_XOR_stan[Ytr_XOR==1, 0],Xtr_XOR_stan[Ytr_XOR==1,1], label="x1", marker="o") # scatter plot the x1 values
+plt.scatter(Xtr_XOR_stan[Ytr_XOR==-1, 0],Xtr_XOR_stan[Ytr_XOR==-1,1], label="x2", marker="o") # scatter plot the x2 values
+plt.scatter(Xtr_XOR_stan[alpha > eps, 0],Xtr_XOR_stan[alpha > eps, 1], label="Support Vectors", s=360, facecolors="none",
+    edgecolors="red", linewidths=1) # scatter plot the support vector values alpha > epsilon make them small red see through circles 
+
+plt.title("XOR Kernel 2")
+plt.xlabel("X1")
+plt.ylabel("X2")
+plt.legend()
+plt.grid(True)
+plt.savefig("part_b_XOR_K2.png")
+plt.show()
+
+getConfusionMatrixAndMargin(Xtr_XOR_stan, Ytr_XOR,Xte_XOR_stan,Yte_XOR,kernel2,alpha,bias)
+plotWaAndMisclass(history, "part_b_XOR_K2_Wa_Misclass.png", "XOR Dataset Kernel 2")
+
 
 
 # part c1 which is compare 10 random initializations
 print("\n--- part c1: random initializations ---")
 
+alphas = []
 for seed in range(10):
     alpha, bias, history = SMO(
         Xtr_ISV_stan,
@@ -430,6 +607,7 @@ for seed in range(10):
         T=10000,
         seed=seed
     )
+    alphas.append(alpha)
 
     w = (alpha * Ytr_ISV) @ Xtr_ISV_stan
 
@@ -440,6 +618,9 @@ for seed in range(10):
         f"sv={np.sum(alpha > 1e-8)}"
     )
 
+print("Are all alphas the same?")
+alphas = np.array(alphas)
+print(np.all(alphas == alphas[0]))
 
 # part c2 to compare our smo with sklearn svc
 print("\n--- part c2: sklearn comparison ---")
