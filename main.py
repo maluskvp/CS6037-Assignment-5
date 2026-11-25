@@ -415,7 +415,7 @@ print("Dataset = iris_setosa_versicolor_train Kernel = K1")
 alpha, bias, history = SMO(Xtr_ISV_stan,Ytr_ISV,kernel1)
 print(f"bias = {bias}")
 nonzero_alphas = alpha[alpha > 0]
-print(f"# of nonzero alphas = {len(nonzero_alphas)}")
+print(f"# of nonzero alphas = {len(nonzero_alphas)}") # used for part E.3
 eps = 1e-8
 
 # get the grid desicion function values from SMO
@@ -448,7 +448,7 @@ print("\nDataset = iris_setosa_versicolor_train Kernel = K2")
 alpha, bias, history = SMO(Xtr_ISV_stan,Ytr_ISV,kernel2)
 print(f"bias = {bias}")
 nonzero_alphas = alpha[alpha > 0]
-print(f"# of nonzero alphas = {len(nonzero_alphas)}")
+print(f"# of nonzero alphas = {len(nonzero_alphas)}") # used for part E.3
 eps = 1e-8
 
 # get the grid desicion function values from SMO
@@ -481,7 +481,7 @@ print("\nDataset = rings Kernel = K1")
 alpha, bias, history = SMO(Xtr_R_stan,Ytr_R,kernel1)
 print(f"bias = {bias}")
 nonzero_alphas = alpha[alpha > 0]
-print(f"# of nonzero alphas = {len(nonzero_alphas)}")
+print(f"# of nonzero alphas = {len(nonzero_alphas)}") # used for part E.3
 eps = 1e-8
 
 # get the grid desicion function values from SMO
@@ -513,7 +513,7 @@ print("\nDataset = rings Kernel = K2")
 alpha, bias, history = SMO(Xtr_R_stan,Ytr_R,kernel2)
 print(f"bias = {bias}")
 nonzero_alphas = alpha[alpha > 0]
-print(f"# of nonzero alphas = {len(nonzero_alphas)}")
+print(f"# of nonzero alphas = {len(nonzero_alphas)}") # used for part E.3
 eps = 1e-8
 
 # get the grid desicion function values from SMO
@@ -546,7 +546,7 @@ print("\nXOR Kernel = K1")
 alpha, bias, history = SMO(Xtr_XOR_stan,Ytr_XOR,kernel1)
 print(f"bias = {bias}")
 nonzero_alphas = alpha[alpha > 0]
-print(f"# of nonzero alphas = {len(nonzero_alphas)}")
+print(f"# of nonzero alphas = {len(nonzero_alphas)}") # used for part E.3
 eps = 1e-8
 
 # get the grid desicion function values from SMO
@@ -578,7 +578,7 @@ print("\nXOR Kernel = K2")
 alpha, bias, history = SMO(Xtr_XOR_stan,Ytr_XOR,kernel2)
 print(f"bias = {bias}")
 nonzero_alphas = alpha[alpha > 0]
-print(f"# of nonzero alphas = {len(nonzero_alphas)}")
+print(f"# of nonzero alphas = {len(nonzero_alphas)}") # used for part E.3
 eps = 1e-8
 
 # get the grid desicion function values from SMO
